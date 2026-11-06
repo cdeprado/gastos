@@ -43,6 +43,13 @@ body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;backgro
 .nav a .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav a .am{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .nav a.home{margin-bottom:4px}
+.mnav{display:none}
+.mnav a.home{display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:10px;border:1px solid var(--border);color:var(--text-2);text-decoration:none;font-size:14px;white-space:nowrap;flex:none}
+.mnav a.home.on{background:var(--accent-soft);color:var(--text);font-weight:600;border-color:transparent}
+.mnav .sel{position:relative;flex:1;min-width:0}
+.mnav select{appearance:none;-webkit-appearance:none;width:100%;font:inherit;font-size:15px;padding:9px 36px 9px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);cursor:pointer}
+.mnav select.on{background:var(--accent-soft);border-color:transparent;font-weight:600}
+.mnav .sel::after{content:"";position:absolute;right:14px;top:50%;width:8px;height:8px;border-right:2px solid var(--text-2);border-bottom:2px solid var(--text-2);transform:translateY(-70%) rotate(45deg);pointer-events:none}
 /* Main */
 main{padding:28px 32px 60px;min-width:0;max-width:1240px}
 .top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
@@ -122,12 +129,8 @@ tr.future td{color:var(--muted)}
   .app{grid-template-columns:1fr}
   .side{position:sticky;top:0;height:auto;z-index:10;padding:12px 10px 8px;border-right:0;border-bottom:1px solid var(--border)}
   .brand{padding:0 6px 10px}
-  .navwrap{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
-  .navgroup{margin:0;display:contents}
-  .navgroup h3{display:none}
-  .nav a{white-space:nowrap;border:1px solid var(--border);padding:6px 10px}
-  .nav a .am{display:none}
-  .nav a .nm{overflow:visible}
+  .navwrap{display:none}
+  .mnav{display:flex;gap:8px;align-items:center;padding:0 2px 2px}
   main{padding:20px 16px 50px}
   .kpis{grid-template-columns:1fr 1fr;gap:10px}
   .kpi .val{font-size:22px}
@@ -143,6 +146,7 @@ tr.future td{color:var(--muted)}
   <aside class="side">
     <div class="brand"><div class="logo">€</div><div><h1>Recibos y gastos</h1><small id="srcmini">Cargando…</small></div></div>
     <div class="navwrap nav" id="nav"></div>
+    <div class="mnav" id="mnav"></div>
   </aside>
   <main id="main"><div class="empty">Cargando datos…</div></main>
 </div>
@@ -155,7 +159,7 @@ tr.future td{color:var(--muted)}
     → Microsoft Excel (.xlsx)). Termina en  ...pub?output=xlsx
    Si se deja vacío, se usa la copia de datos incluida abajo.
    ============================================================ */
-const GOOGLE_XLSX_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSXQYOaN02U-Z-3ThZCJl5RqYYvjj3QSH04klcxxYc3XWGv8HIwv9N0xVY3atjZYkxMf4f5B72wXgki/pub?output=xlsx";
+const GOOGLE_XLSX_URL = "";
 
 /* Copia de los datos del Excel (respaldo si no se puede cargar Google).
    Puedes poner  const SNAPSHOT = null;  si no quieres datos dentro del fichero. */
@@ -357,7 +361,13 @@ function nav(){
     h+=`<div class="navgroup"><h3><i style="background:${g.color}"></i>${g.id}</h3>`+
       list.map(s=>{const st=s.st;return `<a href="#${s.id}" class="${cur===s.id?'on':''}"><span class="ic">${s.icon}</span><span class="nm">${esc(s.name)}</span><span class="am">${st.last?eur0.format(st.last.amount):''}</span></a>`}).join('')+`</div>`}
   document.getElementById('nav').innerHTML=h;
-  const on=document.querySelector('.nav a.on');if(on&&innerWidth<=900)on.scrollIntoView({inline:'center',block:'nearest'});
+  const isSheet=cur!=='resumen';
+  let o=`<option value="" ${isSheet?'':'selected'} disabled>Elige una sección…</option>`;
+  for(const g of GROUPS){const list=SHEETS.filter(s=>s.group===g.id);if(!list.length)continue;
+    o+=`<optgroup label="${g.id}">`+list.map(s=>`<option value="${s.id}" ${cur===s.id?'selected':''}>${s.icon}  ${esc(s.name)}${s.st.last?' · '+eur0.format(s.st.last.amount):''}</option>`).join('')+`</optgroup>`}
+  const mn=document.getElementById('mnav');
+  mn.innerHTML=`<a href="#resumen" class="home ${isSheet?'':'on'}">📊 Resumen</a><div class="sel"><select id="msel" class="${isSheet?'on':''}" aria-label="Sección">${o}</select></div>`;
+  document.getElementById('msel').onchange=e=>{if(e.target.value)location.hash=e.target.value};
 }
 function statusHTML(){
   if(SOURCE.kind==='live')return `<div class="status live"><span class="dot"></span>En directo desde Google Sheets · ${SOURCE.when}</div>`;
