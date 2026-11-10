@@ -10,7 +10,7 @@
   --bg:#f4f4f1; --surface:#fcfcfb; --surface-2:#f0efec; --border:#e4e3de;
   --text:#0b0b0b; --text-2:#52514e; --muted:#8a8984; --grid:#e9e8e3;
   --accent:#2a78d6; --accent-soft:#e3eefb;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --inc:#008300;
   --shadow:0 1px 2px rgba(0,0,0,.04),0 2px 8px rgba(0,0,0,.04);
 }
 @media (prefers-color-scheme: dark){
@@ -19,7 +19,7 @@
     --bg:#121211; --surface:#1a1a19; --surface-2:#242422; --border:#2e2e2b;
     --text:#f0efec; --text-2:#c3c2b7; --muted:#8f8e86; --grid:#2c2c29;
     --accent:#3987e5; --accent-soft:#1d2c40;
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --inc:#2fa52f;
     --shadow:none;
   }
 }
@@ -205,21 +205,24 @@ function num(v){
 
 /* Categorías e iconos (se asignan solos por el nombre de la pestaña) */
 const GROUPS=[
+  {id:'Ingresos',color:'var(--inc)'},
   {id:'Vivienda',color:'var(--s1)'},
   {id:'Suministros',color:'var(--s2)'},
   {id:'Seguros',color:'var(--s3)'},
   {id:'Familia',color:'var(--s4)'},
   {id:'Otros',color:'var(--s5)'},
 ];
-const gcolor=id=>(GROUPS.find(g=>g.id===id)||GROUPS[4]).color;
+const gcolor=id=>(GROUPS.find(g=>g.id===id)||GROUPS[GROUPS.length-1]).color;
+const isIncome=n=>/ingreso|n[óo]mina|salario|sueldo|cobro/i.test(n);
 function groupOf(n){n=n.toLowerCase();
+  if(isIncome(n))return 'Ingresos';
   if(/seguro/.test(n))return 'Seguros';
   if(/agua|gas|luz|fibra|m[óo]vil|aquaservice|internet|electric/.test(n))return 'Suministros';
   if(/hipoteca|comunidad|ibi|caldera|alquiler|basura/.test(n))return 'Vivienda';
   if(/colegio|extraescolar|guarder|academia/.test(n))return 'Familia';
   return 'Otros';}
 function iconOf(n){n=n.toLowerCase();
-  const map=[[/aquaservice/,'🚰'],[/agua/,'💧'],[/gas/,'🔥'],[/luz/,'⚡'],[/fibra|m[óo]vil/,'📶'],[/hipoteca/,'🏠'],[/comunidad/,'🏢'],[/ibi/,'🏛️'],[/caldera/,'🔧'],[/bmw|peugeot|coche/,'🚗'],[/kymco|moto/,'🛵'],[/seguro/,'🛡️'],[/colegio|extraescolar/,'🎒']];
+  const map=[[/ingreso|n[óo]mina|salario|sueldo|cobro/,'💰'],[/aquaservice/,'🚰'],[/agua/,'💧'],[/gas/,'🔥'],[/luz/,'⚡'],[/fibra|m[óo]vil/,'📶'],[/hipoteca/,'🏠'],[/comunidad/,'🏢'],[/ibi/,'🏛️'],[/caldera/,'🔧'],[/bmw|peugeot|coche/,'🚗'],[/kymco|moto/,'🛵'],[/seguro/,'🛡️'],[/colegio|extraescolar/,'🎒']];
   for(const [r,i] of map)if(r.test(n))return i;return '🧾';}
 function placeOf(n){if(/palencia/i.test(n))return 'Palencia';if(/salda[ñn]a/i.test(n))return 'Saldaña';return null}
 
@@ -241,7 +244,7 @@ function parseSheet(name,rows){
         if(j<row.length&&typeof row[j]==='number'){meta[c.trim()]=row[j];i=j}
         else if(!freq&&!/media/i.test(c))freq=c.trim();
       }}}
-  const amtIdx=(()=>{let i=cols.findIndex(c=>/^(precio|importe|cuota|total)$/i.test(c));if(i<0)i=cols.findIndex(c=>/precio|importe|cuota/i.test(c));return i<0?1:i})();
+  const amtIdx=(()=>{let i=cols.findIndex(c=>/^(precio|importe|cuota|total|cantidad|neto|ingreso|ingresos)$/i.test(c));if(i<0)i=cols.findIndex(c=>/precio|importe|cuota|cantidad|neto|ingreso/i.test(c));if(i<0){const ix=cols.map((_,k)=>k).filter(k=>k>0&&rows.slice(hi+1).some(r=>typeof r[first+k]==='number'));if(ix.length)i=ix[0]}return i<0?1:i})();
   const dateCols=cols.map(c=>/fecha/i.test(c));
   const recs=[];
   for(let r=hi+1;r<rows.length;r++){
@@ -253,7 +256,7 @@ function parseSheet(name,rows){
   recs.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
   const consIdx=cols.findIndex(c=>/^consumo/i.test(c));
   return {name,id:slug(name),cols,amtIdx,consIdx,meta,freq,recs,
-    group:groupOf(name),icon:iconOf(name),place:placeOf(name),
+    group:groupOf(name),icon:iconOf(name),place:placeOf(name),income:isIncome(name),
     isMortgage:cols.some(c=>/capital pendiente/i.test(c))};
 }
 function stats(s){
@@ -290,13 +293,14 @@ function barPath(x,w,y0,y1){const h=Math.abs(y0-y1),r=Math.min(4,w/2,h);
 function barChart(el,pts,{height=230,color='var(--s1)',xtick=null,fmtY=eur0.format}={}){
   const W=Math.max(el.clientWidth||600,300),H=height,m={t:10,r:6,b:26,l:58};
   const iw=W-m.l-m.r,ih=H-m.t-m.b;
-  const vals=pts.map(p=>p.value);const ticks=niceTicks(Math.min(0,...vals),Math.max(0,...vals));
+  const vals=pts.flatMap(p=>p.values?p.values.map(x=>x.v):[p.value]);const ticks=niceTicks(Math.min(0,...vals),Math.max(0,...vals));
   const lo=ticks[0],hi=ticks[ticks.length-1];const y=v=>m.t+ih-(v-lo)/(hi-lo)*ih;
   const n=pts.length,step=iw/n,bw=Math.max(1.5,Math.min(34,step-2));
   let s=`<svg viewBox="0 0 ${W} ${H}" role="img">`;
   s+=`<g class="axis">`+ticks.map(t=>`<line class="gridline" x1="${m.l}" x2="${W-m.r}" y1="${y(t)}" y2="${y(t)}"/><text x="${m.l-8}" y="${y(t)+4}" text-anchor="end">${fmtY(t)}</text>`).join('')+`</g>`;
   pts.forEach((p,i)=>{const x=m.l+i*step+(step-bw)/2;
-    s+=`<path class="bar" data-i="${i}" fill="${p.color||color}" d="${barPath(x,bw,y(0),y(p.value))}"/>`;
+    if(p.values){const k=p.values.length,g=k>1?2:0,sw=(bw-g*(k-1))/k;p.values.forEach((q,j)=>{s+=`<path class="bar" data-i="${i}" fill="${q.color}" d="${barPath(x+j*(sw+g),sw,y(0),y(q.v))}"/>`})}
+    else s+=`<path class="bar" data-i="${i}" fill="${p.color||color}" d="${barPath(x,bw,y(0),y(p.value))}"/>`;
     const lab=xtick?xtick(p,i):null;
     if(lab)s+=`<text class="axis" x="${m.l+i*step+step/2}" y="${H-8}" text-anchor="middle" style="fill:var(--muted);font-size:11px">${esc(lab)}</text>`;
   });
@@ -393,18 +397,41 @@ function route(){
 function renderSummary(){
   const main=document.getElementById('main');
   const places=['Todo',...new Set(SHEETS.map(s=>s.place).filter(Boolean))];
-  const list=SHEETS.filter(s=>PLACE==='Todo'||s.place===PLACE);
+  const inPlace=s=>PLACE==='Todo'||s.place===PLACE;
+  const list=SHEETS.filter(s=>!s.income&&inPlace(s));
+  const inc=SHEETS.filter(s=>s.income&&inPlace(s));
+  const hasInc=inc.length>0;
   const sum12=list.reduce((a,s)=>a+s.st.sum12,0);
+  const inc12=inc.reduce((a,s)=>a+s.st.sum12,0);
+  const bal12=inc12-sum12;
   const allPast=list.flatMap(s=>s.st.past.map(r=>({...r,s})));
+  const incPast=inc.flatMap(s=>s.st.past.map(r=>({...r,s})));
   const nexts=list.map(s=>s.st.next&&{...s.st.next,s}).filter(Boolean).sort((a,b)=>a.date<b.date?-1:1);
   const recent=[...allPast].sort((a,b)=>a.date<b.date?1:-1).slice(0,8);
+  const recentInc=[...incPast].sort((a,b)=>a.date<b.date?1:-1).slice(0,6);
   // por mes (24 meses)
   const months=[];const d=new Date();d.setDate(1);for(let i=23;i>=0;i--){const x=new Date(d.getFullYear(),d.getMonth()-i,1);months.push(`${x.getFullYear()}-${pad(x.getMonth()+1)}`)}
-  const byM={};allPast.forEach(r=>{const k=r.date.slice(0,7);byM[k]=(byM[k]||0)+r.amount});
+  const byM={},byMi={};allPast.forEach(r=>{const k=r.date.slice(0,7);byM[k]=(byM[k]||0)+r.amount});
+  incPast.forEach(r=>{const k=r.date.slice(0,7);byMi[k]=(byMi[k]||0)+r.amount});
   // por cuenta
   const byAcc={};list.forEach(s=>{const ci=s.cols.findIndex(c=>/^cuenta$/i.test(c));s.st.last12.forEach(r=>{const k=(ci>=0&&r.cells[ci])||s.name;byAcc[k]=(byAcc[k]||0)+r.amount})});
-  const byGroup=GROUPS.map(g=>({label:g.id,color:g.color,value:list.filter(s=>s.group===g.id).reduce((a,s)=>a+s.st.sum12,0)})).filter(x=>x.value);
+  const byGroup=GROUPS.filter(g=>g.id!=='Ingresos').map(g=>({label:g.id,color:g.color,value:list.filter(s=>s.group===g.id).reduce((a,s)=>a+s.st.sum12,0)})).filter(x=>x.value);
   const usedGroups=byGroup.map(g=>g.label);
+  // ingresos desglosados por concepto (si la hoja tiene esa columna) o por pestaña
+  const incBy={};inc.forEach(s=>{const ci=s.cols.findIndex(c=>/^(concepto|tipo|origen|fuente|titular|categor[ií]a)$/i.test(c));
+    s.st.last12.forEach(r=>{const k=(ci>=0&&r.cells[ci])||s.name;incBy[k]=(incBy[k]||0)+r.amount})});
+  const sgn=v=>(v>=0?'+':'−')+eur.format(Math.abs(v));
+
+  const kpis=hasInc?`
+    <div class="card kpi"><div class="lbl">Ingresos al mes</div><div class="val" style="color:var(--inc)">${eur.format(inc12/12)}</div><div class="foot">Media de los últimos 12 meses</div></div>
+    <div class="card kpi"><div class="lbl">Gastos al mes</div><div class="val">${eur.format(sum12/12)}</div><div class="foot">Media de los últimos 12 meses</div></div>
+    <div class="card kpi"><div class="lbl">Balance al mes</div><div class="val">${sgn(bal12/12)}</div><div class="foot">${bal12>=0?'Ahorro':'Déficit'} de ${eur0.format(Math.abs(bal12))} en 12 meses${inc12?` · ${nf.format(Math.round(bal12/inc12*100))} % de los ingresos`:''}</div></div>
+    <div class="card kpi"><div class="lbl">Próximo cargo</div><div class="val">${nexts[0]?eur.format(nexts[0].amount):'—'}</div><div class="foot">${nexts[0]?`${esc(nexts[0].s.name)} · ${fdate(nexts[0].date)}`:'No hay cargos futuros anotados'}</div></div>`
+  :`
+    <div class="card kpi"><div class="lbl">Gasto mensual medio</div><div class="val">${eur.format(sum12/12)}</div><div class="foot">Últimos 12 meses ÷ 12</div></div>
+    <div class="card kpi"><div class="lbl">Total últimos 12 meses</div><div class="val">${eur0.format(sum12)}</div><div class="foot">${list.reduce((a,s)=>a+s.st.last12.length,0)} recibos</div></div>
+    <div class="card kpi"><div class="lbl">Próximo cargo</div><div class="val">${nexts[0]?eur.format(nexts[0].amount):'—'}</div><div class="foot">${nexts[0]?`${esc(nexts[0].s.name)} · ${fdate(nexts[0].date)}`:'No hay cargos futuros anotados'}</div></div>
+    <div class="card kpi"><div class="lbl">Pestañas</div><div class="val">${list.length}</div><div class="foot">${allPast.length} recibos en total</div></div>`;
 
   main.innerHTML=`
   <div class="top"><div><h2>📊 Resumen</h2><div class="sub">${statusHTML()}</div></div>
@@ -412,33 +439,45 @@ function renderSummary(){
       ${places.length>1?`<div class="seg" id="seg">${places.map(p=>`<button class="${p===PLACE?'on':''}" data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>`:''}
     </div></div>
   ${noticeHTML()}
-  <div class="grid kpis">
-    <div class="card kpi"><div class="lbl">Gasto mensual medio</div><div class="val">${eur.format(sum12/12)}</div><div class="foot">Últimos 12 meses ÷ 12</div></div>
-    <div class="card kpi"><div class="lbl">Total últimos 12 meses</div><div class="val">${eur0.format(sum12)}</div><div class="foot">${list.reduce((a,s)=>a+s.st.last12.length,0)} recibos</div></div>
-    <div class="card kpi"><div class="lbl">Próximo cargo</div><div class="val">${nexts[0]?eur.format(nexts[0].amount):'—'}</div><div class="foot">${nexts[0]?`${esc(nexts[0].s.name)} · ${fdate(nexts[0].date)}`:'No hay cargos futuros anotados'}</div></div>
-    <div class="card kpi"><div class="lbl">Pestañas</div><div class="val">${list.length}</div><div class="foot">${allPast.length} recibos en total</div></div>
-  </div>
-  <div class="card full"><h4>Gasto por mes <span>Últimos 24 meses · suma de todas las pestañas</span></h4><div class="chart" id="cM"></div></div>
+  <div class="grid kpis">${kpis}</div>
+  ${hasInc?`<div class="card full"><h4>Ingresos y gastos por mes <span>Últimos 24 meses</span></h4>
+      <div class="legend"><span><i style="background:var(--inc)"></i>Ingresos</span><span><i style="background:var(--s2)"></i>Gastos</span></div>
+      <div class="chart" id="cM"></div></div>
+    <div class="card full"><h4>Balance mensual <span>Ingresos − gastos de cada mes</span></h4><div class="chart" id="cB"></div></div>`
+   :`<div class="card full"><h4>Gasto por mes <span>Últimos 24 meses · suma de todas las pestañas</span></h4><div class="chart" id="cM"></div></div>`}
   <div class="grid two">
-    <div class="card"><h4>Últimos 12 meses por concepto <span>Pulsa para ver el detalle</span></h4>
+    <div class="card"><h4>Gastos de los últimos 12 meses por concepto <span>Pulsa para ver el detalle</span></h4>
       <div class="legend">${GROUPS.filter(g=>usedGroups.includes(g.id)).map(g=>`<span><i style="background:${g.color}"></i>${g.id}</span>`).join('')}</div>
       ${hbars(list.filter(s=>s.st.sum12).sort((a,b)=>b.st.sum12-a.st.sum12).map(s=>({label:s.name,value:s.st.sum12,color:gcolor(s.group),href:'#'+s.id})))}</div>
     <div class="grid" style="align-content:start">
-      <div class="card"><h4>Por categoría <span>12 meses</span></h4>${hbars(byGroup.sort((a,b)=>b.value-a.value))}</div>
-      <div class="card"><h4>Por cuenta <span>12 meses</span></h4>${hbars(Object.entries(byAcc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:k,value:v,color:'var(--text-2)'})))}</div>
+      ${hasInc?`<div class="card"><h4>Ingresos por concepto <span>12 meses</span></h4>${hbars(Object.entries(incBy).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:k,value:v,color:'var(--inc)'})))}</div>`:''}
+      <div class="card"><h4>Gastos por categoría <span>12 meses</span></h4>${hbars(byGroup.sort((a,b)=>b.value-a.value))}</div>
+      <div class="card"><h4>Gastos por cuenta <span>12 meses</span></h4>${hbars(Object.entries(byAcc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:k,value:v,color:'var(--text-2)'})))}</div>
     </div>
   </div>
   <div class="grid two">
     <div class="card"><h4>Últimos recibos</h4><div class="list">${recent.map(r=>itemHTML(r)).join('')||'<div class="empty">—</div>'}</div></div>
-    <div class="card"><h4>Próximos cargos anotados</h4><div class="list">${nexts.slice(0,8).map(r=>itemHTML(r,true)).join('')||'<div class="empty">No hay cargos futuros en la hoja</div>'}</div></div>
+    <div class="grid" style="align-content:start">
+      ${hasInc?`<div class="card"><h4>Últimos ingresos</h4><div class="list">${recentInc.map(r=>itemHTML(r)).join('')||'<div class="empty">—</div>'}</div></div>`:''}
+      <div class="card"><h4>Próximos cargos anotados</h4><div class="list">${nexts.slice(0,8).map(r=>itemHTML(r,true)).join('')||'<div class="empty">No hay cargos futuros en la hoja</div>'}</div></div>
+    </div>
   </div>`;
-  barChart(document.getElementById('cM'),months.map(k=>({value:byM[k]||0,tip:`${fmonth(k)}<br><b>${eur.format(byM[k]||0)}</b>`})),
-    {xtick:(p,i)=>{const k=months[i];if(k.endsWith('-01'))return k.slice(0,4);const j=months.findIndex(m=>m.endsWith('-01'));return i===0&&(j<0||j>3)?fmonth(k):null}});
+  const xt=(p,i)=>{const k=months[i];if(k.endsWith('-01'))return k.slice(0,4);const j=months.findIndex(m=>m.endsWith('-01'));return i===0&&(j<0||j>3)?fmonth(k):null};
+  if(hasInc){
+    barChart(document.getElementById('cM'),months.map(k=>{const a=byMi[k]||0,b=byM[k]||0;return {values:[{v:a,color:'var(--inc)'},{v:b,color:'var(--s2)'}],
+      tip:`${fmonth(k)}<br>Ingresos: <b>${eur.format(a)}</b><br>Gastos: <b>${eur.format(b)}</b><br>Balance: <b>${sgn(a-b)}</b>`}}),{xtick:xt});
+    barChart(document.getElementById('cB'),months.map(k=>{const v=(byMi[k]||0)-(byM[k]||0);return {value:v,color:v>=0?'var(--inc)':'var(--s2)',tip:`${fmonth(k)}<br>Balance: <b>${sgn(v)}</b>`}}),{xtick:xt,height:180});
+  }else{
+    barChart(document.getElementById('cM'),months.map(k=>({value:byM[k]||0,tip:`${fmonth(k)}<br><b>${eur.format(byM[k]||0)}</b>`})),{xtick:xt});
+  }
   document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{PLACE=b.dataset.p;renderSummary()});
   bindReload();
 }
 function itemHTML(r,future){
-  return `<a class="it" href="#${r.s.id}"><div class="ic">${r.s.icon}</div><div class="tx"><b>${esc(r.s.name)}</b><small>${fdate(r.date)}${future?' · previsto':''}</small></div><div class="am">${eur.format(r.amount)}</div></a>`;
+  const amt=r.s.income?`<span style="color:var(--inc)">+${eur.format(r.amount)}</span>`:eur.format(r.amount);
+  let title=r.s.name;
+  if(r.s.income){const parts=r.s.cols.map((c,i)=>/^(concepto|tipo|origen|fuente|titular|pagador|empresa)$/i.test(c)?r.cells[i]:null).filter(Boolean);if(parts.length)title=parts.join(' · ')}
+  return `<a class="it" href="#${r.s.id}"><div class="ic">${r.s.icon}</div><div class="tx"><b>${esc(title)}</b><small>${fdate(r.date)}${future?' · previsto':''}</small></div><div class="am">${amt}</div></a>`;
 }
 
 /* ---------------- Vista: Pestaña ---------------- */
@@ -452,7 +491,7 @@ function renderSheet(s){
     delta=Math.abs(p)<0.05?'Igual que el anterior':`${p>0?'▲':'▼'} ${nf.format(Math.abs(p))} % vs anterior (${eur.format(st.prev.amount)})`;}
   const years=Object.keys(st.byYear).sort();
   // agrupaciones (titular/compañía) si hay más de un valor
-  const breakdowns=s.cols.map((c,i)=>({c,i})).filter(o=>/^(titular|compañía|compania|concepto)$/i.test(o.c)).map(o=>{
+  const breakdowns=s.cols.map((c,i)=>({c,i})).filter(o=>/^(titular|compañía|compania|concepto|tipo|origen|fuente|pagador|empresa)$/i.test(o.c)).map(o=>{
     const m={};st.past.forEach(r=>{const k=r.cells[o.i];if(k==null||k==='')return;m[k]=(m[k]||0)+r.amount});
     return {c:o.c,entries:Object.entries(m)};}).filter(b=>b.entries.length>1&&b.entries.length<=12);
 
@@ -471,10 +510,10 @@ function renderSheet(s){
       <div class="progress"><div style="width:${fin?amort/fin*100:0}%"></div></div>
       <div class="prow"><span>Amortizado ${eur0.format(amort)} (${nf.format(fin?amort/fin*100:0)} %)</span><span>Última cuota: ${fdate(lastDate)}</span></div></div>`;
   }else{
-    kpis=`<div class="card kpi"><div class="lbl">Último recibo</div><div class="val">${st.last?eur.format(st.last.amount):'—'}</div><div class="foot">${st.last?fdate(st.last.date):''}${delta?`<br><span class="delta">${delta}</span>`:''}</div></div>
+    kpis=`<div class="card kpi"><div class="lbl">${s.income?'Último ingreso':'Último recibo'}</div><div class="val">${st.last?eur.format(st.last.amount):'—'}</div><div class="foot">${st.last?fdate(st.last.date):''}${delta?`<br><span class="delta">${delta}</span>`:''}</div></div>
     <div class="card kpi"><div class="lbl">Media mensual</div><div class="val">${eur.format(st.monthly)}</div><div class="foot">Últimos 12 meses${sheetAvg?` · en la hoja: ${eur.format(sheetAvg[1])}`:''}</div></div>
-    <div class="card kpi"><div class="lbl">Últimos 12 meses</div><div class="val">${eur.format(st.sum12)}</div><div class="foot">${st.last12.length} recibo${st.last12.length===1?'':'s'}</div></div>
-    <div class="card kpi"><div class="lbl">${st.next?'Próximo cargo':'Total registrado'}</div><div class="val">${st.next?eur.format(st.next.amount):eur0.format(st.total)}</div><div class="foot">${st.next?fdate(st.next.date):`${st.past.length} recibos desde ${fdate(st.past[0]?.date)}`}</div></div>`;
+    <div class="card kpi"><div class="lbl">Últimos 12 meses</div><div class="val">${eur.format(st.sum12)}</div><div class="foot">${st.last12.length} ${s.income?'ingreso':'recibo'}${st.last12.length===1?'':'s'}</div></div>
+    <div class="card kpi"><div class="lbl">${st.next?(s.income?'Próximo ingreso':'Próximo cargo'):'Total registrado'}</div><div class="val">${st.next?eur.format(st.next.amount):eur0.format(st.total)}</div><div class="foot">${st.next?fdate(st.next.date):`${st.past.length} ${s.income?'ingresos':'recibos'} desde ${fdate(st.past[0]?.date)}`}</div></div>`;
   }
   main.innerHTML=`
   <div class="top"><div><h2>${s.icon} ${esc(s.name)}</h2><div class="sub">
@@ -486,11 +525,11 @@ function renderSheet(s){
   ${SOURCE.kind==='error'?noticeHTML():''}
   <div class="grid kpis">${kpis}</div>
   ${s.isMortgage?`<div class="card full"><h4>Capital pendiente <span>Línea discontinua: cuotas futuras</span></h4><div class="chart" id="c1"></div></div>`
-   :st.past.length>1?`<div class="grid ${years.length>1?'two':''}" style="margin-bottom:16px"><div class="card"><h4>Importe de cada recibo <span>${st.past.length} recibos</span></h4><div class="chart" id="c1"></div></div>
+   :st.past.length>1?`<div class="grid ${years.length>1?'two':''}" style="margin-bottom:16px"><div class="card"><h4>${s.income?'Importe de cada ingreso':'Importe de cada recibo'} <span>${st.past.length} ${s.income?'ingresos':'recibos'}</span></h4><div class="chart" id="c1"></div></div>
      ${years.length>1?`<div class="card"><h4>Total por año</h4><div class="chart" id="c2"></div></div>`:''}</div>`:''}
   ${s.consIdx>=0&&st.past.filter(r=>num(r.cells[s.consIdx])!=null).length>1?`<div class="card full"><h4>Consumo <span>${esc(s.cols[s.consIdx])}</span></h4><div class="chart" id="c3"></div></div>`:''}
   ${breakdowns.map((b,k)=>`<div class="card full"><h4>Por ${esc(b.c.toLowerCase())} <span>Total registrado</span></h4>${hbars(b.entries.sort((a,b)=>b[1]-a[1]).map(([l,v])=>({label:l,value:v,color:gcolor(s.group)})))}</div>`).join('')}
-  <div class="card"><div class="tbar"><h4 style="margin:0">Todos los recibos <span>${s.recs.length}</span></h4><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">${s.isMortgage?'<label style="font-size:13px;color:var(--text-2);display:flex;gap:6px;align-items:center"><input type="checkbox" id="fut"> Mostrar cuotas futuras</label>':''}<input id="q" type="search" placeholder="Buscar…"></div></div>
+  <div class="card"><div class="tbar"><h4 style="margin:0">${s.income?'Todos los ingresos':'Todos los recibos'} <span>${s.recs.length}</span></h4><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">${s.isMortgage?'<label style="font-size:13px;color:var(--text-2);display:flex;gap:6px;align-items:center"><input type="checkbox" id="fut"> Mostrar cuotas futuras</label>':''}<input id="q" type="search" placeholder="Buscar…"></div></div>
     <div class="tw"><table><thead><tr>${s.cols.map((c,i)=>`<th class="${colIsNum(s,i)?'num':''}">${esc(c)}</th>`).join('')}</tr></thead><tbody id="tb"></tbody></table></div></div>`;
   // tabla
   const rows=[...s.recs].reverse();
@@ -511,7 +550,7 @@ function renderSheet(s){
     let prevY=null;
     barChart(c1,st.past.map(r=>({value:r.amount,color:gcolor(s.group),
       tip:`${fdate(r.date)}<br><b>${eur.format(r.amount)}</b>${tipExtra(s,r)}`})),
-      {color:gcolor(s.group),xtick:(p,i)=>{const y=st.past[i].date.slice(0,4);if(y!==prevY){prevY=y;return st.past.length>6?y:fdate(st.past[i].date)}return st.past.length<=6?fdate(st.past[i].date):null}});
+      {color:gcolor(s.group),xtick:(p,i)=>{const y=st.past[i].date.slice(0,4);if(y!==prevY){prevY=y;if(st.past.length>6&&st.past.filter(r=>r.date.startsWith(y)).length<Math.max(2,st.past.length/25))return null;return st.past.length>6?y:fdate(st.past[i].date)}return st.past.length<=6?fdate(st.past[i].date):null}});
   }
   const c2=document.getElementById('c2');
   if(c2)barChart(c2,years.map(y=>({value:st.byYear[y],color:gcolor(s.group),tip:`${y}<br><b>${eur.format(st.byYear[y])}</b>`})),{xtick:(p,i)=>years[i],color:gcolor(s.group)});
