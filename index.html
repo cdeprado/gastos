@@ -394,13 +394,13 @@ let SHEETS=[],SOURCE={kind:'none',when:null},PLACE='Todo',RENDER=null,PERIODO='1
 
 function nav(){
   const cur=location.hash.slice(1)||'resumen';
-  let h=`<a href="#resumen" class="home ${cur==='resumen'?'on':''}"><span class="ic">📊</span><span class="nm">Resumen</span></a>`;
+  let h=`<a href="#resumen" class="home ${cur==='resumen'?'on':''}"><span class="ic">📊</span><span class="nm">Resumen</span></a><a href="#cuentas" class="home ${cur==='cuentas'?'on':''}"><span class="ic">🏦</span><span class="nm">Cuentas</span></a>`;
   for(const g of GROUPS){const list=SHEETS.filter(s=>s.group===g.id);if(!list.length)continue;
     h+=`<div class="navgroup"><h3><i style="background:${g.color}"></i>${g.id}</h3>`+
       list.map(s=>{const st=s.st;return `<a href="#${s.id}" class="${cur===s.id?'on':''}"><span class="ic">${s.icon}</span><span class="nm">${esc(s.name)}</span><span class="am">${st.last?eur0.format(st.last.amount):''}</span></a>`}).join('')+`</div>`}
   document.getElementById('nav').innerHTML=h;
   const isSheet=cur!=='resumen';
-  let o=`<option value="" ${isSheet?'':'selected'} disabled>Elige una sección…</option>`;
+  let o=`<option value="" ${isSheet?'':'selected'} disabled>Elige una sección…</option><option value="cuentas" ${cur==='cuentas'?'selected':''}>🏦  Cuentas · ingresos y gastos</option>`;
   for(const g of GROUPS){const list=SHEETS.filter(s=>s.group===g.id);if(!list.length)continue;
     o+=`<optgroup label="${g.id}">`+list.map(s=>`<option value="${s.id}" ${cur===s.id?'selected':''}>${s.icon}  ${esc(s.name)}${s.st.last?' · '+eur0.format(s.st.last.amount):''}</option>`).join('')+`</optgroup>`}
   const mn=document.getElementById('mnav');
@@ -422,7 +422,7 @@ function bindReload(){document.querySelectorAll('.reload').forEach(b=>b.onclick=
 function route(){
   const id=location.hash.slice(1)||'resumen';nav();
   const s=SHEETS.find(x=>x.id===id);
-  RENDER=s?()=>renderSheet(s):renderSummary;RENDER();window.scrollTo({top:0});
+  RENDER=id==='cuentas'?renderAccounts:s?()=>renderSheet(s):renderSummary;RENDER();window.scrollTo({top:0});
 }
 
 /* ---------------- Vista: Resumen ---------------- */
@@ -503,8 +503,7 @@ function renderSummary(){
     barChart(document.getElementById('cM'),months.map(k=>({value:byM[k]||0,tip:`${fmonth(k)}<br><b>${eur.format(byM[k]||0)}</b>`})),{xtick:xt});
   }
   document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{PLACE=b.dataset.p;renderSummary()});
-  document.querySelectorAll('#segp button').forEach(b=>b.onclick=()=>{PERIODO=b.dataset.p;const y=scrollY;renderSummary();scrollTo(0,y)});
-  const ca=document.getElementById('cA');if(ca)ca._draw&&ca._draw();
+  bindPeriod();
   bindReload();
 }
 function itemHTML(r,future){
@@ -553,7 +552,7 @@ function accountsHTML(){
   setTimeout(()=>{const el=document.getElementById('cA');if(!el)return;
     const draw=()=>barChart(el,accs.map(a=>({values:[{v:a.inc,color:'var(--inc)'},{v:a.exp,color:'var(--s2)'}],
       tip:`<b>${esc(a.name)}</b><br>Ingresos: <b>${eur.format(a.inc)}</b><br>Gastos: <b>${eur.format(a.exp)}</b><br>Balance: <b>${sgn(a.inc-a.exp)}</b>`})),
-      {xtick:(p,i)=>accs[i].name.length>18?accs[i].name.slice(0,17)+'…':accs[i].name,height:220});
+      {xtick:(p,i)=>{const mx=Math.max(4,Math.floor(((el.clientWidth||600)-70)/accs.length/6.6));const n=accs[i].name;return n.length>mx?n.slice(0,mx-1)+'…':n},height:220});
     el._draw=draw;draw()},0);
   return `<div class="card full">
     <div class="tbar"><h4 style="margin:0">Cuentas: ingresos y gastos <span>${pr.label} · todas las localidades</span></h4>
@@ -563,6 +562,64 @@ function accountsHTML(){
     <div class="legend" style="margin-top:14px"><span><i style="background:var(--inc)"></i>Ingresos</span><span><i style="background:var(--s2)"></i>Gastos</span></div>
     <div class="chart" id="cA"></div>
   </div>`;
+}
+
+
+function bindPeriod(){document.querySelectorAll('#segp button').forEach(b=>b.onclick=()=>{PERIODO=b.dataset.p;const y=scrollY;RENDER();scrollTo(0,y)})}
+/* ---------------- Vista: Cuentas ---------------- */
+let ACC_SEL=null;
+function renderAccounts(){
+  const main=document.getElementById('main');
+  const pr=periodRange();const inP=d=>(pr.excl?d>pr.from:d>=pr.from)&&d<=TODAY;
+  const sgn=v=>(v>=0?'+':'−')+eur.format(Math.abs(v));
+  // todos los movimientos con su cuenta
+  const mov=SHEETS.flatMap(s=>s.st.past.map(r=>{
+    const ci=s.cols.findIndex(c=>/^(concepto|tipo|origen|fuente|periodo|compañía)$/i.test(c));
+    return {date:r.date,amount:r.amount,s,acc:accountOf(s,r),inc:!!s.income,det:ci>=0&&r.cells[ci]!=null?String(r.cells[ci]):''}}));
+  const names=[...new Set([...CUENTAS,...mov.map(m=>m.acc)])].sort((a,b)=>{const o=k=>{const i=CUENTAS.indexOf(k);return i<0?(k==='Sin cuenta asignada'?999:100):i};return o(a)-o(b)||a.localeCompare(b)});
+  if(!ACC_SEL||!names.includes(ACC_SEL))ACC_SEL=names[0];
+  const sel=mov.filter(m=>m.acc===ACC_SEL);
+  // meses del periodo (máx 24 para que se lea)
+  const nM=Math.min(Math.max(pr.months,1),PERIODO==='todo'?60:24);
+  const months=[];const d=new Date();d.setDate(1);for(let i=nM-1;i>=0;i--){const x=new Date(d.getFullYear(),d.getMonth()-i,1);months.push(`${x.getFullYear()}-${pad(x.getMonth()+1)}`)}
+  const mi={},me={};sel.forEach(m=>{const k=m.date.slice(0,7);if(m.inc)mi[k]=(mi[k]||0)+m.amount;else me[k]=(me[k]||0)+m.amount});
+  let acum=0;const acumPts=months.map(k=>{acum+=(mi[k]||0)-(me[k]||0);return {x:k+'-15',y:acum}});
+  const list=sel.filter(m=>inP(m.date)).sort((a,b)=>a.date<b.date?1:-1);
+  const pi=list.filter(m=>m.inc).reduce((a,m)=>a+m.amount,0),pe=list.filter(m=>!m.inc).reduce((a,m)=>a+m.amount,0);
+
+  main.innerHTML=`
+  <div class="top"><div><h2>🏦 Cuentas</h2><div class="sub">${statusHTML()}</div></div></div>
+  ${noticeHTML()}
+  ${accountsHTML()}
+  <div class="card full">
+    <div class="tbar"><h4 style="margin:0">Detalle de una cuenta <span>${pr.label}</span></h4>
+      <div class="seg" id="sega">${names.map(n=>`<button class="${n===ACC_SEL?'on':''}" data-a="${esc(n)}">${esc(n)}</button>`).join('')}</div></div>
+    <div class="acc-tot" style="margin:0 0 14px"><span>🏦 ${esc(ACC_SEL)}</span><span>Ingresos <b class="pos">${eur.format(pi)}</b></span><span>Gastos <b>${eur.format(pe)}</b></span><span>Balance <b class="${pi-pe>=0?'pos':'neg'}">${sgn(pi-pe)}</b></span></div>
+    <h4>Ingresos y gastos por mes</h4>
+    <div class="legend"><span><i style="background:var(--inc)"></i>Ingresos</span><span><i style="background:var(--s2)"></i>Gastos</span></div>
+    <div class="chart" id="cAm"></div>
+    <h4 style="margin-top:22px">Balance acumulado <span>Suma de (ingresos − gastos) mes a mes</span></h4>
+    <div class="chart" id="cAc"></div>
+  </div>
+  <div class="card"><div class="tbar"><h4 style="margin:0">Movimientos de ${esc(ACC_SEL)} <span>${list.length}</span></h4>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><div class="seg" id="segt"><button class="on" data-t="all">Todos</button><button data-t="inc">Ingresos</button><button data-t="exp">Gastos</button></div><input id="qa" type="search" placeholder="Buscar…"></div></div>
+    <div class="tw"><table><thead><tr><th>Fecha</th><th>Pestaña</th><th>Detalle</th><th class="num">Importe</th></tr></thead><tbody id="tba"></tbody></table></div></div>`;
+  const xt=(p,i)=>{const k=months[i];if(k.endsWith('-01'))return k.slice(0,4);const j=months.findIndex(m=>m.endsWith('-01'));return i===0&&(j<0||j>3)?fmonth(k):null};
+  barChart(document.getElementById('cAm'),months.map(k=>{const a=mi[k]||0,b=me[k]||0;return {values:[{v:a,color:'var(--inc)'},{v:b,color:'var(--s2)'}],
+    tip:`${fmonth(k)}<br>Ingresos: <b>${eur.format(a)}</b><br>Gastos: <b>${eur.format(b)}</b><br>Balance: <b>${sgn(a-b)}</b>`}}),{xtick:xt});
+  lineChart(document.getElementById('cAc'),acumPts,{color:acum>=0?'var(--inc)':'var(--s2)',height:200,zero:true,
+    fmtTip:p=>`${fmonth(p.x.slice(0,7))}<br>Acumulado: <b>${sgn(p.y)}</b>`});
+  let T='all',Q='';
+  const tb=document.getElementById('tba');
+  const draw=()=>{const q=Q.toLowerCase();
+    tb.innerHTML=list.filter(m=>(T==='all'||(T==='inc')===m.inc)&&(!q||(m.s.name+' '+m.det).toLowerCase().includes(q))).map(m=>
+      `<tr><td>${fdate(m.date)}</td><td><a href="#${m.s.id}" style="color:inherit">${m.s.icon} ${esc(m.s.name)}</a></td><td class="${m.det.length>40?'wrap':''}">${esc(m.det)}</td><td class="num amt ${m.inc?'pos':''}">${m.inc?'+':'−'}${eur.format(Math.abs(m.amount))}</td></tr>`).join('')
+      ||'<tr><td colspan="4" class="empty">Sin movimientos</td></tr>'};
+  draw();
+  document.getElementById('qa').oninput=e=>{Q=e.target.value;draw()};
+  document.querySelectorAll('#segt button').forEach(b=>b.onclick=()=>{T=b.dataset.t;document.querySelectorAll('#segt button').forEach(x=>x.classList.toggle('on',x===b));draw()});
+  document.querySelectorAll('#sega button').forEach(b=>b.onclick=()=>{ACC_SEL=b.dataset.a;const y=scrollY;renderAccounts();scrollTo(0,y)});
+  bindPeriod();bindReload();
 }
 
 /* ---------------- Vista: Pestaña ---------------- */
